@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ROS 2 Mini Project — Harsh Koche</title>
+<style>
+  @page { size: A4; margin: 15mm 15mm; }
+  body { font-family: "Liberation Sans", Arial, sans-serif; color: #202a36; font-size: 10.5pt; line-height: 1.4; }
+  h1, h2, h3 { color: #163b63; }
+  h1 { font-size: 27pt; margin: 0 0 5px; }
+  h2 { font-size: 17pt; border-bottom: 1px solid #b8c9d9; padding-bottom: 4px; margin: 22px 0 9px; }
+  h3 { font-size: 12pt; margin: 12px 0 5px; }
+  p { margin: 6px 0 9px; }
+  .subtitle { color: #536477; font-size: 14pt; }
+  .meta, .answer, .thought { padding: 9px 11px; border-radius: 4px; }
+  .meta { background: #eef4f9; margin: 16px 0; }
+  .answer { background: #f5f8fb; margin: 7px 0 13px; }
+  .thought { background: #edf6f1; border-left: 4px solid #4a8c68; margin: 11px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 9px 0 13px; font-size: 8.5pt; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  th { background: #e7eff6; text-align: left; color: #163b63; }
+  th, td { border: 1px solid #b8c4d0; padding: 4px 5px; vertical-align: top; }
+  code, pre { font-family: "Liberation Mono", monospace; font-size: 8.7pt; }
+  pre { background: #f1f3f5; padding: 8px; white-space: pre-wrap; break-inside: avoid; font-size: 8pt; line-height: 1.16; }
+  .page-break { page-break-before: always; break-before: page; }
+  .source-shot { display: block; width: 100%; max-height: 245mm; object-fit: contain; border: 1px solid #ccd4dc; margin: 8px auto 5px; }
+  .robot-shot { max-height: 155mm; }
+  .caption { color: #536477; font-size: 9pt; text-align: center; margin: 4px 0 10px; }
+  .small { font-size: 9pt; color: #536477; }
+  li { margin: 4px 0; }
+</style>
+</head>
+<body>
+<h1>ROS 2 Mini Project</h1>
+<div class="subtitle">URDF Modeling and RViz2 Visualization of an Industrial Robotic Arm</div>
+<div class="meta">
+  <b>Student:</b> Harsh Koche<br>
+  <b>Project folder:</b> ros2mini project<br>
+  <b>Platform:</b> Ubuntu 22.04 · ROS 2 Humble · URDF/Xacro · RViz2
+</div>
+
+<h2>My design approach</h2>
+<p>
+I began by thinking about the robot as a set of rigid links and the motions that connect them. I used
+<code>world</code> as a stable reference, fixed the base to it, and arranged the arm links in a serial chain.
+At the end of the arm, I attached two separate sliding finger links to represent the gripper. This structure keeps
+the arm motion and gripper motion easy to identify in both the Xacro and the TF tree.
+</p>
+<div class="thought">
+<b>Why these joint types?</b> I used revolute joints for the articulated arm because those links rotate about an
+axis. I used prismatic joints for the gripper fingers because they translate along an axis. I kept the finger
+joints as separate branches so their direction and travel limits can be specified independently.
+</div>
+<p>
+The included model contains five revolute arm joints and two prismatic gripper joints. I describe the gripper
+separately from the arm so the function of each movable joint is clear.
+</p>
+
+<h2>Question 1 — Robot structure design</h2>
+<p><b>Question:</b> Define the kinematic structure of the arm and label its joints and links.</p>
+<div class="answer">
+<p><b>Answer:</b> I represented the root reference as <code>world</code> and attached the robot base,
+<code>base_link</code>, with the fixed joint <code>base_joint</code>. Five revolute joints connect the arm
+links sequentially. The final arm link, <code>link_5</code>, is the parent of the two prismatic gripper fingers.</p>
+<pre>world
+└── base_joint (fixed) → base_link
+    └── joint_1 → link_1
+        └── joint_2 → link_2
+            └── joint_3 → link_3
+                └── joint_4 → link_4
+                    └── joint_5 → link_5
+                        ├── joint_6 (prismatic) → link_6
+                        └── joint_7 (prismatic) → link_7</pre>
+<p>The complete model has nine links including the reference frame, one fixed joint, five revolute arm joints,
+and two prismatic gripper joints.</p>
+</div>
+
+<h2>Question 2 — URDF link definition</h2>
+<p><b>Question:</b> Define the links, including visual and collision geometry.</p>
+<div class="answer">
+<p><b>Answer:</b> In my Xacro, <code>base_link</code> and <code>link_1</code> through <code>link_7</code>
+each have a visual element and a collision element. Their geometry references STL meshes in the package's
+<code>meshes/</code> directory. Visual elements specify material colours for rendering in RViz2; collision
+elements describe the link shapes for collision-aware tools. The robot links also include inertial properties.
+The <code>world</code> link is a reference frame and does not need geometry.</p>
+</div>
+<img class="source-shot" src="screenshots/xacro_structure_geometry.png" alt="Xacro source excerpt showing root, base and mesh geometry">
+<p class="caption">Figure 1. Xacro excerpt showing the robot root, fixed base, mesh visual, and collision geometry.</p>
+
+<div class="page-break"></div>
+<h2 style="page-break-before: always;">Question 3 — Joint definition</h2>
+<p><b>Question:</b> Define joint types, parent–child relationships, axes, and limits.</p>
+<div class="answer">
+<p><b>Answer:</b> Each moving joint names its parent and child links, type of motion, axis, and allowed range.
+Revolute limits are angular values in radians. Prismatic limits are linear distances in metres. The Xacro also
+provides effort and velocity limits.</p>
+</div>
+<table>
+<thead><tr><th>Joint</th><th>Type</th><th>Parent → child</th><th>Axis (XYZ)</th><th>Position limits</th><th>Effort / velocity</th></tr></thead>
+<tbody>
+<tr><td>base_joint</td><td>Fixed</td><td>world → base_link</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>joint_1</td><td>Revolute</td><td>base_link → link_1</td><td>0 1 0</td><td>0 to 3.142 rad</td><td>300 N·m / 3 rad/s</td></tr>
+<tr><td>joint_2</td><td>Revolute</td><td>link_1 → link_2</td><td>0 0 1</td><td>−1.57 to 1.57 rad</td><td>200 N·m / 3 rad/s</td></tr>
+<tr><td>joint_3</td><td>Revolute</td><td>link_2 → link_3</td><td>0 0 1</td><td>0 to 3.142 rad</td><td>200 N·m / 3 rad/s</td></tr>
+<tr><td>joint_4</td><td>Revolute</td><td>link_3 → link_4</td><td>0 0 1</td><td>−3.142 to 0 rad</td><td>200 N·m / 3 rad/s</td></tr>
+<tr><td>joint_5</td><td>Revolute</td><td>link_4 → link_5</td><td>1 0 0</td><td>0 to 3.142 rad</td><td>200 N·m / 3 rad/s</td></tr>
+<tr><td>joint_6</td><td>Prismatic</td><td>link_5 → link_6</td><td>0 0 −1</td><td>0 to 0.03 m</td><td>100 N / 3 m/s</td></tr>
+<tr><td>joint_7</td><td>Prismatic</td><td>link_5 → link_7</td><td>0 0 1</td><td>−0.03 to 0 m</td><td>100 N / 3 m/s</td></tr>
+</tbody>
+</table>
+<p class="small">The first value in the final column is the effort limit (N·m for revolute joints and N for prismatic joints); the second is the velocity limit.</p>
+
+<div class="page-break"></div>
+<h2>Joint source — arm joints 1 to 3</h2>
+<p>These Xacro excerpts show how I connect the base and arm links, set each rotation axis, and constrain the joint range.</p>
+<img class="source-shot" src="screenshots/xacro_arm_joints_1_3.png" alt="Xacro source for revolute joints one through three">
+<p class="caption">Figure 2. Source excerpts for revolute joints 1–3.</p>
+
+<div class="page-break"></div>
+<h2>Joint source — arm joints 4 and 5</h2>
+<p>The next two revolute joints continue the arm chain and define the wrist-side orientation axes.</p>
+<img class="source-shot" src="screenshots/xacro_arm_joints_4_5.png" alt="Xacro source for revolute joints four and five">
+<p class="caption">Figure 3. Source excerpts for revolute joints 4–5.</p>
+
+<div class="page-break"></div>
+<h2>Joint source — gripper fingers</h2>
+<p>
+The gripper uses two prismatic joints attached to <code>link_5</code>. The opposite axis directions and 3 cm
+limits represent the two fingers' sliding motion.
+</p>
+<img class="source-shot" src="screenshots/xacro_gripper_joints.png" alt="Xacro source for prismatic gripper joints six and seven">
+<p class="caption">Figure 4. Source excerpts for the prismatic finger joints, their axes, and their travel limits.</p>
+
+<div class="page-break"></div>
+<h2>Question 4 — Assembly validation</h2>
+<p><b>Question:</b> Assemble the links and joints into a complete URDF robot model.</p>
+<div class="answer">
+<p><b>Answer:</b> I assembled the link meshes, inertial data, joint relationships, limits, and control declarations
+in <code>robot_arm_urdf.urdf.xacro</code>. The fixed base joint anchors the structure at <code>world</code>;
+the five arm joints form a connected chain and the gripper joints branch from <code>link_5</code>.</p>
+<p>I built the package with colcon, expanded the Xacro, and checked the resulting URDF. The parser reported
+<code>world</code> as the root and showed the expected arm chain and gripper branches.</p>
+<pre>cd /home/echo/moveit2_ws
+colcon build --packages-select robot_arm_urdf
+source install/setup.bash
+xacro src/robot_arm_urdf/urdf/robot_arm_urdf.urdf.xacro &gt; /tmp/robot_arm.urdf
+check_urdf /tmp/robot_arm.urdf</pre>
+</div>
+<img class="source-shot" src="screenshots/xacro_ros2_control_arm.png" alt="Xacro ROS 2 control definitions for arm joints">
+<p class="caption">Figure 5. Xacro source for the hardware declaration and arm joint interfaces.</p>
+
+<div class="page-break"></div>
+<h2>Control source — gripper and simulator plugin</h2>
+<p>The ROS 2 control block also declares position commands and position/velocity feedback for both gripper joints.</p>
+<img class="source-shot" src="screenshots/xacro_ros2_control_gripper.png" alt="Xacro ROS 2 control definitions for gripper and Gazebo plugin">
+<p class="caption">Figure 6. Xacro source for gripper interfaces and the optional Gazebo Classic plugin.</p>
+
+<div class="page-break"></div>
+<h2>Question 5 — RViz2 visualization</h2>
+<p><b>Question:</b> Load the robot model in RViz and verify the visualization.</p>
+<div class="answer">
+<p><b>Answer:</b> I launched the model using <code>display.launch.py</code>, which starts
+<code>robot_state_publisher</code>, the Joint State Publisher GUI, and RViz2. In RViz2, I set the Fixed Frame to
+<code>world</code> and enabled RobotModel. The screenshot shows the robot geometry and the RobotModel status as OK.</p>
+<p>The Joint State Publisher GUI can be used to preview different joint positions. This demonstrates the model's
+kinematic visualization; it does not simulate forces or physical contact.</p>
+<pre>source /opt/ros/humble/setup.bash
+source /home/echo/moveit2_ws/install/setup.bash
+ros2 launch robot_arm_urdf display.launch.py</pre>
+</div>
+<img class="source-shot robot-shot" src="screenshots/rviz_robot.png" alt="Robot model displayed in RViz2 with RobotModel status OK">
+<p class="caption">Figure 7. RViz2 visualization of the robot model with RobotModel status OK.</p>
+
+<div class="page-break"></div>
+<h2>RViz2 launch source</h2>
+<p>This launch file evaluates the Xacro description, publishes the robot state, opens the joint slider GUI, and starts RViz2.</p>
+<img class="source-shot" src="screenshots/display_launch_source.png" alt="Source code of display launch file">
+<p class="caption">Figure 8. Source of <code>display.launch.py</code>.</p>
+
+<div class="page-break"></div>
+<h2>Question 6 — TF tree verification</h2>
+<p><b>Question:</b> Visualize and verify the robot's TF tree using ROS 2 tools.</p>
+<div class="answer">
+<p><b>Answer:</b> I generated the frame report using <code>tf2_tools view_frames</code>. It lists eight frames:
+<code>world</code>, <code>base_link</code>, and <code>link_1</code> through <code>link_7</code>. The tree
+shows the fixed base connection, the serial arm chain, and two gripper branches from <code>link_5</code>.</p>
+<pre>source /opt/ros/humble/setup.bash
+source /home/echo/moveit2_ws/install/setup.bash
+ros2 run tf2_tools view_frames</pre>
+<p>The generated TF report PDF and a readable image of the tree are included with the project files.</p>
+</div>
+<img class="source-shot" src="screenshots/tf_tree.png" alt="Generated robot TF frame tree">
+<p class="caption">Figure 9. TF tree generated from the robot's published frames.</p>
+
+<div class="page-break"></div>
+<h2>Controller configuration</h2>
+<p>
+I grouped the five revolute joints under <code>arm_controller</code> and the two prismatic gripper joints under
+<code>hand_controller</code>. The controller configuration requests position commands and position/velocity state
+interfaces. The included Gazebo control plugin is for Gazebo Classic; the RViz2 visualization and TF checks above
+are the demonstrations documented in this report.
+</p>
+<img class="source-shot" src="screenshots/controller_config_source.png" alt="ROS 2 controller YAML source">
+<p class="caption">Figure 10. Controller configuration for the arm and gripper.</p>
+
+<h2>Submission checklist</h2>
+<ol>
+  <li>This report PDF with answers to all six project questions.</li>
+  <li>The full <code>robot_arm_urdf/</code> package: Xacro, launch files, controller YAML, meshes, <code>package.xml</code>, and <code>CMakeLists.txt</code>.</li>
+  <li>The generated TF-tree PDF plus RViz2 and TF-tree screenshots.</li>
+  <li>The Xacro, launch, and controller source screenshots included in the <code>screenshots/</code> folder.</li>
+</ol>
+<p>The editable report source is <code>report.html</code>. All submission materials are grouped under
+<code>ros2mini project/</code> for upload to the Drive folder.</p>
+</body>
+</html>
